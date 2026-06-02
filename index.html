@@ -34,12 +34,13 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 
 /* ── LAYOUT ── */
 .layout{display:flex;flex:1;overflow:hidden}
-.sidebar{width:52px;background:#111111;display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:2px;flex-shrink:0;border-right:1px solid #222;transition:width .2s;overflow:hidden}
-.sidebar.expanded{width:160px;align-items:flex-start}
-.sb-btn{width:40px;height:40px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;cursor:pointer;color:#7a8fb8;border:none;background:none;transition:all .15s;white-space:nowrap;overflow:hidden}
-.sidebar.expanded .sb-btn{width:148px;justify-content:flex-start;padding:0 10px;gap:10px;font-size:15px}
-.sb-label{display:none;font-size:13px;font-weight:600;color:#c5d0e8}
-.sidebar.expanded .sb-label{display:inline}
+.sidebar-overlay{display:none;position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.3)}
+.sidebar-overlay.show{display:block}
+.sidebar{width:0;background:#111111;display:flex;flex-direction:column;align-items:flex-start;padding:0;gap:2px;flex-shrink:0;border-right:none;transition:width .2s,padding .2s;overflow:hidden;position:relative;z-index:51}
+.sidebar.expanded{width:160px;padding:6px 0;border-right:1px solid #222}
+.sb-btn{width:148px;height:40px;border-radius:6px;display:flex;align-items:center;justify-content:flex-start;padding:0 10px;gap:10px;font-size:17px;cursor:pointer;color:#c5d0e8;border:none;background:none;transition:all .15s;white-space:nowrap;flex-shrink:0}
+.sb-icon{font-size:17px;flex-shrink:0;line-height:1}
+.sb-label{font-size:13px;font-weight:600;color:#c5d0e8}
 .sb-btn.active{background:rgba(255,255,255,.15);color:#fff}
 .sb-btn.active .sb-label{color:#fff}
 .sb-btn:hover{background:rgba(255,255,255,.1);color:#fff}
@@ -218,10 +219,11 @@ tr:hover td{background:#f5f7fa}
   <div class="avatar" style="margin-left:8px">👤</div>
 </div>
 <div class="layout">
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
   <div class="sidebar" id="sidebar">
-    <button class="sb-btn active" onclick="goScreen('home')" title="Home">🏠<span class="sb-label">Home</span></button>
-    <button class="sb-btn" onclick="goScreen('upload')" title="Import">🗄️<span class="sb-label">Import</span></button>
-    <button class="sb-btn" onclick="goScreen('summary')" title="Summary">📊<span class="sb-label">Summary</span></button>
+    <button class="sb-btn active" onclick="goScreen('home')" title="Home"><span class="sb-icon">🏠</span><span class="sb-label">Home</span></button>
+    <button class="sb-btn" onclick="goScreen('upload')" title="Import"><span class="sb-icon">🗄️</span><span class="sb-label">Import</span></button>
+    <button class="sb-btn" onclick="goScreen('summary')" title="Summary"><span class="sb-icon">📊</span><span class="sb-label">Summary</span></button>
   </div>
   <div class="main">
     <div class="screen active" id="screen-home">
@@ -553,7 +555,9 @@ function buildDataTable(){const map={};inventory.forEach(r=>{const a=r.aisle||''
 
 window.toggleSidebar=function(){
   const sb=document.getElementById('sidebar');
+  const ov=document.getElementById('sidebarOverlay');
   sb.classList.toggle('expanded');
+  ov.classList.toggle('show',sb.classList.contains('expanded'));
 };
 
 window.topbarBack=function(){
@@ -591,7 +595,12 @@ window.topbarBack=function(){
     updateBreadcrumb();return;
   }
 };
-window.goScreen=function(name){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('screen-'+name).classList.add('active');document.querySelectorAll('.sb-btn').forEach(b=>b.classList.remove('active'));const idx={home:0,upload:1,summary:2}[name];if(idx!==undefined)document.querySelectorAll('.sb-btn')[idx].classList.add('active');document.getElementById('topbarTitle').textContent={home:'Home',upload:'Import Count',list:'List',summary:'Summary'}[name]||name;if(name==='summary')refreshSummary();if(name==='upload')updateUploadSub();};
+window.goScreen=function(name){
+  // Close sidebar if open
+  const sb=document.getElementById('sidebar');
+  const ov=document.getElementById('sidebarOverlay');
+  if(sb)sb.classList.remove('expanded');
+  if(ov)ov.classList.remove('show');document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('screen-'+name).classList.add('active');document.querySelectorAll('.sb-btn').forEach(b=>b.classList.remove('active'));const idx={home:0,upload:1,summary:2}[name];if(idx!==undefined)document.querySelectorAll('.sb-btn')[idx].classList.add('active');document.getElementById('topbarTitle').textContent={home:'Home',upload:'Import Count',list:'List',summary:'Summary'}[name]||name;if(name==='summary')refreshSummary();if(name==='upload')updateUploadSub();};
 
 window.selectType=function(type){if(inventory.length===0){document.getElementById('noDataTip').style.display='block';return;}document.getElementById('noDataTip').style.display='none';sel.type=type;sel.module=null;sel.aisle=null;sel.zone=null;saveState();document.getElementById('btnCount').className='btn-type'+(type==='Count'?' sel':' dim');document.getElementById('btnRecount').className='btn-type'+(type==='Recount'?' sel':' dim');renderModules();hide('panelAisle');hide('panelZone');updateBreadcrumb();};
 function renderModules(){const present=new Set();activeAisles.forEach(a=>{if(AISLE_MOD[a])present.add(AISLE_MOD[a]);});// In Recount: only show modules that have Short/Over items
