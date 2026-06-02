@@ -137,7 +137,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .t-user{background:#1565c0;color:#fff;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:10px}
 
 /* ── MODAL ── */
-.overlay{position:fixed;inset:0;background:rgba(10,20,50,.65);display:flex;align-items:flex-start;justify-content:center;z-index:300;overflow-y:auto;padding:16px 0 24px;transition:padding-bottom .15s}
+.overlay{position:fixed;inset:0;background:rgba(10,20,50,.65);display:flex;align-items:flex-start;justify-content:center;z-index:300;overflow-y:auto;padding:16px 0 24px;transition:height 0.35s cubic-bezier(.4,0,.2,1),top 0.35s cubic-bezier(.4,0,.2,1)}
 .overlay.hidden{display:none}
 .modal{background:#fff;border-radius:var(--radius-xl);width:480px;max-width:96vw;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.22);margin:auto;flex-shrink:0}
 .modal-top{background:#1a2235;padding:13px 16px;display:flex;align-items:flex-start;justify-content:space-between;border-bottom:3px solid var(--blue-accent)}
@@ -835,24 +835,28 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();if(e.ke
 (function(){
   const overlay=document.getElementById('modal'); // the .overlay div
   const overlayEl=overlay.closest?overlay.closest('.overlay'):document.querySelector('.overlay');
+  // Add transition to overlay for smooth keyboard animation
+  if(overlayEl){
+    overlayEl.style.transition='height 0.35s cubic-bezier(.4,0,.2,1), top 0.35s cubic-bezier(.4,0,.2,1)';
+  }
   function onViewportResize(){
     if(!overlayEl||overlayEl.classList.contains('hidden'))return;
     const vv=window.visualViewport;
     if(!vv)return;
     const kbHeight=window.innerHeight-vv.height-vv.offsetTop;
     if(kbHeight>100){
-      // Keyboard is open: shrink overlay to visible area, scroll focused input into view
+      // Keyboard is open: smoothly shrink overlay to visible area
       overlayEl.style.height=vv.height+'px';
       overlayEl.style.top=vv.offsetTop+'px';
       overlayEl.style.bottom='auto';
       overlayEl.style.overflowY='auto';
-      // Scroll the focused input into view inside the overlay
+      // Scroll the focused input into view — delayed so transition finishes first
       const focused=document.activeElement;
       if(focused&&focused.tagName==='INPUT'){
-        setTimeout(()=>focused.scrollIntoView({block:'center',behavior:'smooth'}),80);
+        setTimeout(()=>focused.scrollIntoView({block:'center',behavior:'smooth'}),300);
       }
     } else {
-      // Keyboard closed: restore full overlay
+      // Keyboard closed: restore full overlay smoothly
       overlayEl.style.height='';
       overlayEl.style.top='';
       overlayEl.style.bottom='';
