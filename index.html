@@ -469,49 +469,51 @@ function saveInventory(){
   if(db){ setDoc(doc(db,SESS,DOC_INV),{items:inventory.map(slim),meta}).catch(()=>{}); }
 }
 function saveState(){
-  lsSet('res',results); lsSet('sel',sel);
+  const stateAt=new Date().toISOString();
+  lsSet('res',results); lsSet('sel',sel); lsSet('stateAt',stateAt);
   if(db){
     clearTimeout(_stateTimer);
-    _stateTimer=setTimeout(()=>{ setDoc(doc(db,SESS,DOC_STATE),{results,sel,updatedAt:new Date().toISOString()}).catch(()=>{}); },400);
+    _stateTimer=setTimeout(()=>{ setDoc(doc(db,SESS,DOC_STATE),{results,sel,updatedAt:stateAt}).catch(()=>{}); },400);
   }
 }
 
-// ── LOAD: Firebase first, fall back to localStorage ──
+// ── LOAD: Firebase = source of truth, localStorage = fast cache ──
 async function loadAll(){
-  // ── STEP 1: Load localStorage IMMEDIATELY (fast, always works) ──
+  // ── STEP 1: Show localStorage instantly (fast first paint) ──
   const lsInv=lsGet('inv');
+  const lsMeta=lsGet('meta');
+  const lsRes=lsGet('res');
+  const lsSel=lsGet('sel');
   if(lsInv&&Array.isArray(lsInv)&&lsInv.length){
     inventory=lsInv;
     normalizeAll(inventory);
     activeAisles=new Set(inventory.map(r=>r.aisle).filter(Boolean));
-    const meta=lsGet('meta');
-    showBanner(inventory.length, meta?new Date(meta.at).toLocaleDateString():'', 'ls');
     buildDataTable();
     document.getElementById('dataTblWrap').style.display='block';
     updateUploadSub();
   }
-  const lsRes=lsGet('res'); if(lsRes)results=lsRes;
-  const lsSel=lsGet('sel'); if(lsSel)sel=lsSel;
+  if(lsRes) results=lsRes;
+  if(lsSel) sel=lsSel;
 
-  // ── STEP 2: Try Firebase in background (don't block UI, don't overwrite LS with slimmed data) ──
+  // ── STEP 2: ALWAYS fetch Firebase and use whichever (LS or FB) is NEWER ──
   if(db){
     try{
       const snap=await getDoc(doc(db,SESS,DOC_INV));
       if(snap.exists()){
         const d=snap.data();
-        // Only use Firebase data if localStorage had nothing
-        if(d.items&&d.items.length&&inventory.length===0){
-          inventory=d.items;
-          normalizeAll(inventory);
-          activeAisles=new Set(inventory.map(r=>r.aisle).filter(Boolean));
-          const meta=d.meta||{};
-          showBanner(inventory.length, meta.at?new Date(meta.at).toLocaleDateString():'', 'fb');
-          buildDataTable();
-          document.getElementById('dataTblWrap').style.display='block';
-          updateUploadSub();
-          // Save the full slimmed data back to localStorage so next refresh is instant
-          lsSet('inv',inventory);
-          if(d.meta)lsSet('meta',d.meta);
+        if(d.items&&d.items.length){
+          const fbTime=d.meta&&d.meta.at?new Date(d.meta.at).getTime():0;
+          const lsTime=lsMeta&&lsMeta.at?new Date(lsMeta.at).getTime():0;
+          if(fbTime>=lsTime||inventory.length===0){
+            inventory=d.items;
+            normalizeAll(inventory);
+            activeAisles=new Set(inventory.map(r=>r.aisle).filter(Boolean));
+            buildDataTable();
+            document.getElementById('dataTblWrap').style.display='block';
+            updateUploadSub();
+            lsSet('inv',inventory);
+            if(d.meta)lsSet('meta',d.meta);
+          }
         }
       }
     }catch(e){}
@@ -519,9 +521,18 @@ async function loadAll(){
       const snap=await getDoc(doc(db,SESS,DOC_STATE));
       if(snap.exists()){
         const d=snap.data();
-        // Only use Firebase state if localStorage had nothing
-        if(!lsRes&&d.results){ results=d.results||{}; lsSet('res',results); }
-        if(!lsSel&&d.sel){ sel=d.sel; lsSet('sel',sel); }
+        if(d.results){
+          const fbTime=d.updatedAt?new Date(d.updatedAt).getTime():0;
+          const lsStateAt=lsGet('stateAt');
+          const lsTime=lsStateAt?new Date(lsStateAt).getTime():0;
+          if(fbTime>=lsTime||!lsRes){
+            results=d.results||{};
+            if(d.sel)sel=d.sel;
+            lsSet('res',results);
+            lsSet('sel',sel);
+            lsSet('stateAt',d.updatedAt||new Date().toISOString());
+          }
+        }
       }
     }catch(e){}
   }
@@ -531,10 +542,14 @@ async function loadAll(){
   if(pm&&pm.barcodeMap){barcodeMap=pm.barcodeMap;if(pm.productImageMap)productImageMap=pm.productImageMap;setSyncStatus('ok_cache',Object.keys(barcodeMap).length);}
 
   // ── STEP 4: Restore the home UI to where the user was ──
-  if(inventory.length>0 && sel.type) restoreHomeUI();
+  if(inventory.length>0){
+    document.getElementById('noDataTip').style.display='none';
+    if(sel.type) restoreHomeUI();
+  }
 }
 
 function restoreHomeUI(){
+  document.getElementById('noDataTip').style.display='none';
   document.getElementById('btnCount').className='btn-type'+(sel.type==='Count'?' sel':' dim');
   document.getElementById('btnRecount').className='btn-type'+(sel.type==='Recount'?' sel':' dim');
   renderModules();
