@@ -387,7 +387,7 @@ tr:hover td{background:#f5f7fa}
         </div>
         <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%">
           <table style="min-width:680px;border-collapse:collapse;width:100%">
-            <thead><tr><th style="white-space:nowrap">Location</th><th style="white-space:nowrap">Aisle</th><th style="white-space:nowrap">Product</th><th style="white-space:nowrap;min-width:160px">Description</th><th style="white-space:nowrap">BOH</th><th style="white-space:nowrap">Count</th><th style="white-space:nowrap">Diff</th><th style="white-space:nowrap">Status</th></tr></thead>
+            <thead><tr><th style="white-space:nowrap">Location</th><th style="white-space:nowrap">Aisle</th><th style="white-space:nowrap">Product</th><th style="white-space:nowrap;min-width:160px">Description</th><th style="white-space:nowrap">BOH</th><th style="white-space:nowrap">Count</th><th style="white-space:nowrap">Diff</th><th style="white-space:nowrap">Status</th><th style="white-space:nowrap">Code Date System</th><th style="white-space:nowrap">Code Date Count</th></tr></thead>
             <tbody id="sumBody"></tbody>
           </table>
         </div>
@@ -962,7 +962,7 @@ window.calcTotal=function(){const cq=window._caseQty||1;const pq=window._packQty
 window.submitCount=function(){const{total,diff,cases,packs,units}=calcTotal();const codeDate=document.getElementById('iCodeDate').value;const time=new Date().toTimeString().slice(0,8);const status=diff===0?'equal':diff<0?'short':'over';results[currentItem.location_id]={total,diff,cases,packs,units,codeDate,time,status};skippedItems.delete(currentItem.location_id);saveState();closeModal();renderList();renderAisles();if(isFCA(sel.aisle))renderFCZones(sel.aisle,true);else renderZones(true);showToast(status==='equal'?'✓ Equal – saved to cloud':status==='short'?`⚠ Short by ${Math.abs(diff)} – saved`:`↑ Over by ${diff} – saved`);};
 window.closeModal=function(){document.getElementById('modal').classList.add('hidden');currentItem=null;};
 
-function refreshSummary(){const all=inventory.filter(r=>r.product_code||r.description);const counted=all.filter(r=>results[r.location_id]);document.getElementById('sTotal').textContent=all.length;document.getElementById('sCounted').textContent=counted.length;document.getElementById('sShort').textContent=counted.filter(r=>results[r.location_id].status==='short').length;document.getElementById('sOver').textContent=counted.filter(r=>results[r.location_id].status==='over').length;const tbody=document.getElementById('sumBody');tbody.innerHTML='';counted.forEach(item=>{const res=results[item.location_id];const boh=parseFloat(item.boh)||parseFloat(item.boh_unit)||0;const tr=document.createElement('tr');const badge=res.status==='equal'?'<span class="s-badge sb-eq">Equal</span>':res.status==='short'?`<span class="s-badge sb-sh">Short(${res.diff})</span>`:`<span class="s-badge sb-ov">Over(+${res.diff})</span>`;tr.innerHTML=`<td style="white-space:nowrap">${item.location_id||''}</td><td style="white-space:nowrap">${item.aisle||''}</td><td style="white-space:nowrap">${item.product_code||''}</td><td style="min-width:160px">${item.description||''}</td><td style="white-space:nowrap">${boh}</td><td style="white-space:nowrap">${res.total}</td><td style="white-space:nowrap;font-weight:700;color:${res.diff===0?'var(--green)':res.diff<0?'var(--red)':'var(--yellow)'}">${res.diff>=0?'+':''}${res.diff}</td><td style="white-space:nowrap">${badge}</td>`;tbody.appendChild(tr);});}
+function refreshSummary(){const all=inventory.filter(r=>r.product_code||r.description);const counted=all.filter(r=>results[r.location_id]);document.getElementById('sTotal').textContent=all.length;document.getElementById('sCounted').textContent=counted.length;document.getElementById('sShort').textContent=counted.filter(r=>results[r.location_id].status==='short').length;document.getElementById('sOver').textContent=counted.filter(r=>results[r.location_id].status==='over').length;const tbody=document.getElementById('sumBody');tbody.innerHTML='';counted.forEach(item=>{const res=results[item.location_id];const boh=parseFloat(item.boh)||parseFloat(item.boh_unit)||0;const tr=document.createElement('tr');const badge=res.status==='equal'?'<span class="s-badge sb-eq">Equal</span>':res.status==='short'?`<span class="s-badge sb-sh">Short(${res.diff})</span>`:`<span class="s-badge sb-ov">Over(+${res.diff})</span>`;tr.innerHTML=`<td style="white-space:nowrap">${item.location_id||''}</td><td style="white-space:nowrap">${item.aisle||''}</td><td style="white-space:nowrap">${item.product_code||''}</td><td style="min-width:160px">${item.description||''}</td><td style="white-space:nowrap">${boh}</td><td style="white-space:nowrap">${res.total}</td><td style="white-space:nowrap;font-weight:700;color:${res.diff===0?'var(--green)':res.diff<0?'var(--red)':'var(--yellow)'}">${res.diff>=0?'+':''}${res.diff}</td><td style="white-space:nowrap">${badge}</td><td style="white-space:nowrap;color:var(--text2)">${item.code_date||'–'}</td><td style="white-space:nowrap;color:var(--text2)">${res.codeDate||'–'}</td>`;tbody.appendChild(tr);});}
 
 window.exportToExcel=function(){
   const all=inventory.filter(r=>r.product_code||r.description);
@@ -985,12 +985,13 @@ window.exportToExcel=function(){
       'Count Total':res.total,
       'Difference':res.diff,
       'Status':res.status==='equal'?'Equal':res.status==='short'?'Short':'Over',
-      'Code Date':res.codeDate||'',
+      'Code Date System':item.code_date||'',
+      'Code Date Count':res.codeDate||'',
       'Count Time':res.time||''
     };
   });
   const ws=XLSX.utils.json_to_sheet(rows);
-  ws['!cols']=[{wch:12},{wch:8},{wch:14},{wch:14},{wch:40},{wch:12},{wch:12},{wch:8},{wch:8},{wch:8},{wch:12},{wch:12},{wch:8},{wch:12},{wch:12}];
+  ws['!cols']=[{wch:12},{wch:8},{wch:14},{wch:14},{wch:40},{wch:12},{wch:12},{wch:8},{wch:8},{wch:8},{wch:12},{wch:12},{wch:8},{wch:16},{wch:16},{wch:12}];
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'Count Results');
   const date=new Date().toISOString().slice(0,10).replace(/-/g,'');
