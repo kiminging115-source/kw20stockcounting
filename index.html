@@ -583,9 +583,12 @@ async function loadAll(){
     }catch(e){}
   }
 
-  // ── STEP 3: Barcode cache from localStorage ──
+  // ── STEP 3: Barcode cache from localStorage (fast, used until fresh sync arrives) ──
   const pm=lsGet('pm');
   if(pm&&pm.barcodeMap){barcodeMap=pm.barcodeMap;if(pm.productImageMap)productImageMap=pm.productImageMap;setSyncStatus('ok_cache',Object.keys(barcodeMap).length);}
+
+  // ── STEP 3b: Always fetch fresh barcodes from Firebase (never skip) ──
+  if(db){ syncFirebase(true); }
 
   // ── STEP 4: Restore the home UI to where the user was ──
   if(inventory.length>0){
@@ -618,18 +621,47 @@ async function syncFirebase(silent=false){
     const q=query(collection(db,'products'),orderBy('id'));
     const snap=await getDocs(q);
     const products=snap.docs.map(d=>({...d.data(),_docId:d.id}));
+    // Always rebuild from fresh data — never merge with stale cache
+    barcodeMap={};productImageMap={};
     buildBarcodeMap(products);
+    // Save fresh map to localStorage
     lsSet('pm',{barcodeMap,productImageMap,at:new Date().toISOString(),n:products.length});
     setSyncStatus('ok',products.length);
-    if(!silent)showToast('Synced '+products.length+' products ✓');
+    if(!silent)showToast('✓ Products synced: '+products.length+' items, '+Object.keys(barcodeMap).length+' barcodes');
   }catch(e){
+    // Offline: fall back to cache but rebuild with updated buildBarcodeMap logic
     const pm=lsGet('pm');
     if(pm&&pm.barcodeMap){barcodeMap=pm.barcodeMap;if(pm.productImageMap)productImageMap=pm.productImageMap;setSyncStatus('ok_cache',Object.keys(barcodeMap).length);}
     else setSyncStatus('err');
   }
 }
-function buildBarcodeMap(products){barcodeMap={};productImageMap={};products.forEach(p=>{const pc=String(p.id||'').trim();if(!pc)return;barcodeMap[pc]={product_code:pc,type:'id'};// Store image URL keyed by product code
-const imgSrc=p.imageUrl||p.image||null;if(imgSrc)productImageMap[pc]=imgSrc;['case','pack','unit'].forEach(type=>{const grp=p[type];if(!grp)return;['b1','b2','b3','b4'].forEach(bk=>{const bc=String(grp[bk]||'').trim();if(bc&&bc.length>3&&!/^0+$/.test(bc))barcodeMap[bc]={product_code:pc,type};});});});}
+function buildBarcodeMap(products){
+  barcodeMap={};productImageMap={};
+  products.forEach(p=>{
+    const pc=String(p.id||'').trim();if(!pc)return;
+    barcodeMap[pc]={product_code:pc,type:'id'};
+    const imgSrc=p.imageUrl||p.image||null;if(imgSrc)productImageMap[pc]=imgSrc;
+    ['case','pack','unit'].forEach(type=>{
+      const grp=p[type];if(!grp||typeof grp!=='object')return;
+      // Support all field name variants used by Product Management app
+      const variants=['b1','b2','b3','b4',
+        'barcode1','barcode2','barcode3','barcode4',
+        'Barcode1','Barcode2','Barcode3','Barcode4',
+        'barcode_1','barcode_2','barcode_3','barcode_4',
+        'Barcode 1','Barcode 2','Barcode 3','Barcode 4'];
+      variants.forEach(bk=>{
+        const bc=String(grp[bk]||'').trim();
+        if(bc&&bc.length>3&&!/^0+$/.test(bc))barcodeMap[bc]={product_code:pc,type};
+      });
+      // Also scan ALL keys of the group object for any barcode-like values
+      Object.values(grp).forEach(v=>{
+        const bc=String(v||'').trim();
+        if(bc&&bc.length>5&&/^\d+$/.test(bc)&&!barcodeMap[bc])
+          barcodeMap[bc]={product_code:pc,type};
+      });
+    });
+  });
+}
 function setSyncStatus(s,n){const dot=document.getElementById('syncDot'),lbl=document.getElementById('syncLabel');if(s==='ok'){dot.className='sync-dot ok';lbl.textContent='Products synced';lbl.style.color='#4caf50';}else if(s==='ok_cache'){dot.className='sync-dot ok';lbl.textContent='Products synced (cached)';lbl.style.color='#aaa';}else if(s==='syncing'){dot.className='sync-dot syncing';lbl.textContent='Syncing...';lbl.style.color='var(--yellow)';}else{dot.className='sync-dot err';lbl.textContent='Offline (cached)';lbl.style.color='var(--red)';}}
 
 function lookupByBarcode(bc){bc=bc.trim();let m=filteredItems.find(r=>String(r.product_code||'').trim()===bc||String(r.location_id||'').trim()===bc);if(m)return{item:m,matchType:'direct'};const e=barcodeMap[bc];if(e){m=filteredItems.find(r=>String(r.product_code||'').trim()===String(e.product_code).trim());if(m)return{item:m,matchType:e.type};}m=filteredItems.find(r=>(r.description||'').toLowerCase().includes(bc.toLowerCase()));return m?{item:m,matchType:'search'}:null;}
@@ -1052,7 +1084,7 @@ function showScanConfirm(item, cb){
     setTimeout(()=>{ cb(); }, 180);
   }, 1050);
 }
-window.handleBarcode=function(val){clearTimeout(_bcTimer);const status=document.getElementById('scanStatus');if(!val){status.innerHTML='';return;}_bcTimer=setTimeout(()=>{const found=lookupByBarcode(val);if(found){status.innerHTML='';document.getElementById('barcodeInp').value='';showScanConfirm(found.item,()=>openModal(found.item));}else if(val.length>=4){const inPm=barcodeMap[val.trim()];status.innerHTML=inPm?`<span style="color:var(--yellow)">⚠ Found in PM (${inPm.product_code}) but not in this zone</span>`:`<span style="color:var(--red)">❌ "${val}" not found in product database</span>`;setTimeout(()=>{status.innerHTML='';document.getElementById('barcodeInp').value='';},4000);}},280);};
+window.handleBarcode=function(val){clearTimeout(_bcTimer);const status=document.getElementById('scanStatus');if(!val){status.innerHTML='';return;}_bcTimer=setTimeout(()=>{const found=lookupByBarcode(val);if(found){status.innerHTML='';document.getElementById('barcodeInp').value='';showScanConfirm(found.item,()=>openModal(found.item));}else if(val.length>=4){const inPm=barcodeMap[val.trim()];status.innerHTML=inPm?`<span style="color:var(--yellow)">⚠ Found in PM (${inPm.product_code}) but not in this zone</span>`:`<span style="color:var(--red)">❌ "${val}" not found — <span style="text-decoration:underline;cursor:pointer" onclick="syncFirebase(false)">Re-sync products?</span></span>`;setTimeout(()=>{status.innerHTML='';document.getElementById('barcodeInp').value='';},4000);}},280);};
 
 function openModal(item){currentItem=item;
   // Parse pack_format e.g. "1X8X6" → caseQty=1*8*6=48, packQty=6
@@ -1156,7 +1188,6 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();if(e.ke
 
 // ── INIT ──
 loadAll();
-if(db) setTimeout(()=>syncFirebase(true),600);
 // Load saved staff name into avatar
 (function(){const n=lsGet('staffName');if(n){_staffName=n;updateAvatar(n);}})();
 // Close name modal on Enter key
